@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <!-- Safari iOS - apps only -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <!-- Chrome for Android - NEW! -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="images/brand.png">
+    <link rel="shortcut icon" href="images/favicon.ico">
+
+    <title>Bootstrap Map JS - Four Maps</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="css/style.css" rel="stylesheet">
+
+    <!-- Bootstrap-map-js -->
+    <link rel="stylesheet" type="text/css" href="http://js.arcgis.com/3.9/js/esri/css/esri.css">   
+    <link rel="stylesheet" type="text/css" href="css/bootstrapmap.css"> 
+
+    <style type="text/css">
+
+     .container.main {
+       margin-top: 0;
+       margin-bottom: 15px;
+     }
+
+     .row {
+       margin-bottom: 0;
+     }
+     
+     [class*="col-"] {
+       margin-bottom: 10px;
+     }
+     
+     /* Extra small devices (phones, up to 480px) */
+     @media (max-width: 480px) {
+       .map {
+         height: 100px;
+       }
+       .container.main {
+         margin-top: 10px;
+       }
+     }
+
+     @media (min-width: 481px) and (max-width: 767px) {
+       .map {
+         height: 150px;
+       }
+       .container.main {
+         margin-top: 10px;
+       }
+     }
+
+     /* Small devices (tablets, 768px and up) - Portrait to Landscape */
+     @media (min-width: 768px) {
+       .map {
+         height: 200px;
+       }
+       .row {
+         margin-bottom: 20px;
+       }
+     }
+
+     /* Medium devices (desktops, 992px and up) */
+     @media (min-width: 992px) {
+       .map {
+         height: 300px;
+       }
+     }
+
+     /* Large devices (large desktops, 1200px and up) */
+     @media (min-width: 1200px) {
+       .map {
+         height: 400px;
+       }
+     }
+
+    </style>  
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+    <script src="../../docs-assets/js/html5shiv.js"></script>
+    <script src="../../docs-assets/js/respond.min.js"></script>
+    <![endif]-->
+    <script>
+     var package_path = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+     var dojoConfig = {
+       packages: [{
+	 name: "application",
+	 location: "/plat-editor/js"
+       }]
+     }     
+    </script>
+    <script src="js/holder.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-header hidden-xs">
+	<h2>Plat and Survey Locations</h2>
+	<p class="lead">Move the selected point to it's appropriate spot on the map.</p>
+      </div>
+      <div class="row">
+	<div class="col-xs-12 col-sm-12 col-lg-12">
+	  <div id="map"></div>
+	</div>
+	<div class="col-xs-12 col-sm-3 col-lg-3">
+	  <div id="details"></div>
+	</div>
+      </div>
+      <div class="row" id="attachments">
+      </div>
+    </div>
+    <script src="js/eventjs/Event.js"></script>
+    <script src="js/magnifierjs/Magnifier.js"></script>
+    <script src="http://js.arcgis.com/3.10/"></script>
+    <script>
+     var evt = new Event(),
+     m = new Magnifier(evt, {
+       zoom: 5,
+       zoomable: true,
+       mode: 'inside'
+     });
+    </script>
+    <script>
+     var map;
+     require([
+       "esri/map",
+       "esri/toolbars/edit",
+       "esri/graphic",
+       "esri/graphicsUtils",
+       "esri/Color",
+       "esri/config",
+       "esri/urlUtils",
+
+       "esri/geometry/Extent",
+
+       "esri/layers/ArcGISDynamicMapServiceLayer",
+       "esri/layers/ArcGISTiledMapServiceLayer",
+       "esri/layers/FeatureLayer",
+
+       "esri/symbols/SimpleMarkerSymbol",
+       "esri/symbols/SimpleLineSymbol",
+       "esri/symbols/SimpleFillSymbol",
+
+       "esri/tasks/query",
+
+       "application/attachment",
+
+       "dojo/_base/array",
+       "dojo/_base/event",
+       "dojo/_base/lang",
+       "dojo/dom-construct",
+       "dojo/on",
+       "dojo/query",
+       "dojo/parser",
+       "dijit/registry",
+
+       "dijit/layout/BorderContainer", "dijit/layout/ContentPane",
+       "dijit/form/Button", "dojo/domReady!"
+     ], function(
+       Map, Edit, Graphic, graphicsUtils, Color, esriConfig, urlUtils, Extent,
+       DynamicMapServiceLayer, TiledMapServiceLayer, FeatureLayer,
+       SimpleMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol,
+       Query, Attachment, arrayUtils, event, lang, domConstruct, on, query, parser, registry
+     ) {
+       parser.parse();
+
+       // refer to "Using the Proxy Page" for more information:  https://developers.arcgis.com/en/javascript/jshelp/ags_proxy.html
+       esriConfig.defaults.io.proxyUrl = "/proxy";
+
+       // This service is for development and testing purposes only. We recommend that you create your own geometry service for use within your applications. 
+       esriConfig.defaults.geometryService = new esri.tasks.GeometryService("http://www.sjcgis.org/arcgis/rest/services/Utilities/Geometry/GeometryServer");
+
+       var sms = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_SQUARE, 20,
+					new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID,
+							     new Color([0,255,255]),4),
+					new Color([255,255,0,0]));
+
+       var basemap = TiledMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
+       var pls = DynamicMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Polaris/PublicLandSurvey/MapServer");
+       map = new Map("map", {
+       });
+       map.addLayer(basemap);
+       map.addLayer(pls);
+
+       var platPoints = new DynamicMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Andromeda/Plats_Surveys/MapServer");
+
+       var platPointFLayer = new FeatureLayer("http://www.sjcgis.org/arcgis/rest/services/Andromeda/Plats_Surveys/FeatureServer/0", {
+         mode: FeatureLayer.MODE_SELECTION,
+         outFields: ["*"],
+	 id: "platPointFlayer"
+       });
+       platPointFLayer.setSelectionSymbol(sms);
+
+       map.on("click", function(evt) {
+	 var query = new Query();
+	 query.geometry = pointToExtent(map, evt.mapPoint, 10);
+	 query.outFields = ["ObjectID"];
+	 // Query the point clicked and return only the first record if more than one fits the query
+	 platPointFLayer.queryFeatures(query, function(results){
+	   var features = results.features;
+	   if(features.length > 0) {
+	     var platId = features[0].attributes["ObjectID"];
+	     selectPlat(platId);
+	   }
+	 });
+       });
+
+       map.on("layers-add-result", function(result) {
+	 window.onpopstate = function(event) {
+	   var platId = getPlatFromUrl(document.location.href);
+	   if(platId) {
+	     selectPlat(platId);
+	   } else {
+	     platPointFLayer.clearSelection();
+	   }
+	 };
+
+	 var platId = getPlatFromUrl(document.location.href);
+	 selectPlat(platId);
+       });
+
+       map.addLayers([platPoints,platPointFLayer]);
+
+       function getPlatFromUrl(url){
+	 var urlObject = urlUtils.urlToObject(url);
+	 if (urlObject.query && urlObject.query.uuid) {
+	   return urlObject.query.uuid;
+	 } else {
+	   return null;
+	 }
+       }
+
+       function pointToExtent(map, point, toleranceInPixel) {
+	 var pixelWidth = map.extent.getWidth() / map.width;
+	 var toleraceInMapCoords = toleranceInPixel * pixelWidth;
+	 return new Extent( point.x - toleraceInMapCoords,
+			    point.y - toleraceInMapCoords,
+			    point.x + toleraceInMapCoords,
+			    point.y + toleraceInMapCoords,
+			    map.spatialReference );
+       }
+
+       function selectPlat(platId) {
+	 if(platId) {
+	   var query = new Query();
+	   query.where = "ObjectID = " + platId;
+	   var deferred = platPointFLayer.selectFeatures(query, FeatureLayer.SELECTION_NEW, function(selection) {
+	     var center = graphicsUtils.getGeometries(selection)[0];
+	     var extHandler = map.on("extent-change", function() {
+	       extHandler.remove();
+	     });
+	     getAttachments(platId);
+	     //Refresh the URL with the currently selected plat point
+	     if (typeof history.pushState !== "undefined") {
+	       window.history.pushState(null, null, "?uuid=" + platId);
+	     }
+	     map.centerAt(center);
+	   });
+	 }
+       }
+
+       function getAttachments(objectId) {
+	 domConstruct.empty("attachments");
+	 var deferred = platPointFLayer.queryAttachmentInfos(objectId, function(attachInfos) {
+	   arrayUtils.forEach(attachInfos, function(attachInfo) {
+	     var attachment = new Attachment({
+	       imgUrl: attachInfo.url,
+	       fileName: attachInfo.name
+	     }).placeAt("attachments");
+	   });
+	 });
+       }
+
+       function initEditing(evt) {
+	 console.log("initEditing", evt);
+	 var platPointFLayer = map.getLayer("platPointFLayer");
+
+	 var editToolbar = new Edit(map);
+	 editToolbar.on("deactivate", function(evt) {
+	   if (evt.info.isModified) {
+	     platPointFLayer.applyEdits(null, [evt.graphic], null);
+	   }
+	 });
+
+	 var editingEnabled = false;
+	 platPointFLayer.on("dbl-click", function(evt) {
+           event.stop(evt);
+           if (editingEnabled === false) {
+             editingEnabled = true;
+             editToolbar.activate(Edit.EDIT_VERTICES , evt.graphic);
+           } else {
+             currentLayer = this;
+             editToolbar.deactivate();
+             editingEnabled = false;
+           }
+	 });
+
+	 layer.on("click", function(evt) {
+           event.stop(evt);
+           if (evt.ctrlKey === true || evt.metaKey === true) {  //delete feature if ctrl key is depressed
+             layer.applyEdits(null,null,[evt.graphic]);
+             currentLayer = this;
+             editToolbar.deactivate();
+             editingEnabled=false;
+           }
+	 });
+
+	 var templatePicker = new TemplatePicker({
+           featureLayers: layers,
+           rows: "auto",
+           columns: 2,
+           grouping: true,
+           style: "height: auto; overflow: auto;"
+	 }, "templatePickerDiv");
+
+	 templatePicker.startup();
+
+	 var drawToolbar = new Draw(map);
+
+	 var selectedTemplate;
+	 templatePicker.on("selection-change", function() {
+           if( templatePicker.getSelected() ) {
+             selectedTemplate = templatePicker.getSelected();
+           }
+           switch (selectedTemplate.featureLayer.geometryType) {
+             case "esriGeometryPoint":
+               drawToolbar.activate(Draw.POINT);
+               break;
+             case "esriGeometryPolyline":
+               drawToolbar.activate(Draw.POLYLINE);
+               break;
+             case "esriGeometryPolygon":
+               drawToolbar.activate(Draw.POLYGON);
+               break;
+           }
+	 });
+
+	 drawToolbar.on("draw-end", function(evt) {
+           drawToolbar.deactivate();
+           editToolbar.deactivate();
+           var newAttributes = lang.mixin({}, selectedTemplate.template.prototype.attributes);
+           var newGraphic = new Graphic(evt.geometry, null, newAttributes);
+           selectedTemplate.featureLayer.applyEdits([newGraphic], null, null);
+	 });
+       }
+     });
+    </script>
+  </body>
+</html>
