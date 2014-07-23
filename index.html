@@ -24,7 +24,8 @@
 
     <!-- Bootstrap-map-js -->
     <link rel="stylesheet" type="text/css" href="http://js.arcgis.com/3.9/js/esri/css/esri.css">   
-    <link rel="stylesheet" type="text/css" href="css/bootstrapmap.css"> 
+    <link rel="stylesheet" type="text/css" href="css/bootstrapmap.css">
+    <link rel="stylesheet" type="text/css" href="js/shadowbox/shadowbox.css">
 
     <style type="text/css">
 
@@ -44,7 +45,7 @@
      /* Extra small devices (phones, up to 480px) */
      @media (max-width: 480px) {
        .map {
-         height: 100px;
+         height: 200px;
        }
        .container.main {
          margin-top: 10px;
@@ -53,7 +54,7 @@
 
      @media (min-width: 481px) and (max-width: 767px) {
        .map {
-         height: 150px;
+         height: 400px;
        }
        .container.main {
          margin-top: 10px;
@@ -63,7 +64,7 @@
      /* Small devices (tablets, 768px and up) - Portrait to Landscape */
      @media (min-width: 768px) {
        .map {
-         height: 200px;
+         height: 400px;
        }
        .row {
          margin-bottom: 20px;
@@ -73,14 +74,14 @@
      /* Medium devices (desktops, 992px and up) */
      @media (min-width: 992px) {
        .map {
-         height: 300px;
+         height: 600px;
        }
      }
 
      /* Large devices (large desktops, 1200px and up) */
      @media (min-width: 1200px) {
        .map {
-         height: 600px;
+         height: 800px;
        }
      }
 
@@ -100,34 +101,25 @@
        }]
      }     
     </script>
-    <script src="js/holder.js"></script>
+    <script src="js/shadowbox/shadowbox.js"></script>
+    <script type="text/javascript">
+     Shadowbox.init();
+    </script>
   </head>
   <body>
     <div class="container">
 	<h2>Plat and Survey Locations</h2>
-	<p class="lead">Move the selected point to it's appropriate spot on the map.</p>
+	<p class="lead">Move the selected point to it's appropriate spot on the map based on the scanned image(s).</p>
       <div class="row">
-	<div class="col-xs-9 col-sm-9 col-lg-9">
+	<div class="col-xs-12 col-md-6 col-lg-6">
 	  <div id="map"></div>
 	</div>
-	<div class="col-xs-3 col-sm-3 col-lg-3">
-	  <div id="details"></div>
+	<div class="col-xs-12 col-md-6 col-lg-6">
+	  <div id="attachments"></div>
 	</div>
       </div>
-      <div class="row" id="attachments">
-      </div>
     </div>
-    <script src="js/eventjs/Event.js"></script>
-    <script src="js/magnifierjs/Magnifier.js"></script>
     <script src="http://js.arcgis.com/3.10/"></script>
-    <script>
-     var evt = new Event(),
-     m = new Magnifier(evt, {
-       zoom: 5,
-       zoomable: true,
-       mode: 'inside'
-     });
-    </script>
     <script>
      var map;
      require([
