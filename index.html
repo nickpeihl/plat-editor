@@ -101,10 +101,6 @@
        }]
      }     
     </script>
-    <script src="js/shadowbox/shadowbox.js"></script>
-    <script type="text/javascript">
-     Shadowbox.init();
-    </script>
   </head>
   <body>
     <div class="container">
@@ -115,15 +111,19 @@
 	  <div id="map"></div>
 	</div>
 	<div class="col-xs-12 col-md-6 col-lg-6">
-	  <div id="attachments"></div>
+	  <div id="rasterMap"></div>
 	</div>
       </div>
     </div>
     <script src="http://js.arcgis.com/3.10/"></script>
     <script>
      var map;
+     var rasterMap;
+     var mapImgLayer;
+     var basemap;
      require([
        "esri/map",
+       "esri/SpatialReference",
        "esri/toolbars/edit",
        "esri/graphic",
        "esri/graphicsUtils",
@@ -136,6 +136,8 @@
        "esri/layers/ArcGISDynamicMapServiceLayer",
        "esri/layers/ArcGISTiledMapServiceLayer",
        "esri/layers/FeatureLayer",
+       "esri/layers/MapImage",
+       "esri/layers/MapImageLayer",
 
        "esri/symbols/SimpleMarkerSymbol",
        "esri/symbols/SimpleLineSymbol",
@@ -157,17 +159,15 @@
        "dijit/layout/BorderContainer", "dijit/layout/ContentPane",
        "dijit/form/Button", "dojo/domReady!"
      ], function(
-       Map, Edit, Graphic, graphicsUtils, Color, esriConfig, urlUtils, Extent,
+       Map, SpatialReference, Edit, Graphic, graphicsUtils, Color, esriConfig, urlUtils, Extent,
        DynamicMapServiceLayer, TiledMapServiceLayer, FeatureLayer,
-       SimpleMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol,
+       MapImage, MapImageLayer, SimpleMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol,
        Query, Attachment, arrayUtils, event, lang, domConstruct, on, query, parser, registry
      ) {
        parser.parse();
 
        // refer to "Using the Proxy Page" for more information:  https://developers.arcgis.com/en/javascript/jshelp/ags_proxy.html
        esriConfig.defaults.io.proxyUrl = "/proxy/proxy.ashx";
-
-       // This service is for development and testing purposes only. We recommend that you create your own geometry service for use within your applications. 
        esriConfig.defaults.geometryService = new esri.tasks.GeometryService("http://www.sjcgis.org/arcgis/rest/services/Utilities/Geometry/GeometryServer");
 
        var sms = new SimpleMarkerSymbol(SimpleMarkerSymbol.STYLE_CIRCLE, 20,
@@ -175,12 +175,24 @@
 							     new Color([0,255,255]),4),
 					new Color([0,255,255,0.75]));
 
-       var basemap = TiledMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
+       var mapBasemap = TiledMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
+       var rasterBasemap =  TiledMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Basemaps/General_Basemap/MapServer");
        var pls = DynamicMapServiceLayer("http://www.sjcgis.org/arcgis/rest/services/Polaris/PublicLandSurvey/MapServer");
+
+       // This is the map for the plat and survey locations.
        map = new Map("map", {
        });
-       map.addLayer(basemap);
+       map.addLayer(mapBasemap);
        map.addLayer(pls);
+
+       // This is the map used to zoom in and out of the attachments
+       rasterMap = new Map("rasterMap", {
+       });
+       /* The map's spatial reference is set by the first layer. We'll add the
+        general basemap to the rasterMap to set the spatial reference to 2285,
+        then we'll hide the basemap. */
+       rasterMap.addLayer(rasterBasemap);
+       rasterBasemap.hide(); 
 
        var editToolbar = new Edit(map);
 
@@ -194,6 +206,10 @@
 
        platPointFLayer.setSelectionSymbol(sms);
 
+       /* When the map is clicked, we'll want to see if a survey point is clicked.
+        We use the pointToExtent function to generalize the search area since we
+        cannot click on the exact coordinates. If more than one survey point is
+        found, we'll just send the first one to the selectPlat function. */
        map.on("click", function(evt) {
 	 editToolbar.deactivate();
 	 var query = new Query();
@@ -208,7 +224,10 @@
 	   }
 	 });
        });
-
+       
+       /* When the page is first loaded, we want to check the URL for a plat ID
+        and send the plat ID to the selectPlat function. */
+       // TODO Handle invalid IDs.
        map.on("layers-add-result", function(result) {
 	 initEditing();
 	 window.onpopstate = function(event) {
@@ -219,13 +238,13 @@
 	     platPointFLayer.clearSelection();
 	   }
 	 };
-
 	 var platId = getPlatFromUrl(document.location.href);
 	 selectPlat(platId);
        });
 
        map.addLayers([platPointFLayer]);
 
+       // This is the function to check the URL for a plat ID
        function getPlatFromUrl(url){
 	 var urlObject = urlUtils.urlToObject(url);
 	 if (urlObject.query && urlObject.query.uuid) {
@@ -235,6 +254,8 @@
 	 }
        }
 
+       /* This is the generalize function for creating an extent to query
+        for features when the map is clicked on. */
        function pointToExtent(map, point, toleranceInPixel) {
 	 var pixelWidth = map.extent.getWidth() / map.width;
 	 var toleraceInMapCoords = toleranceInPixel * pixelWidth;
@@ -245,16 +266,20 @@
 			    map.spatialReference );
        }
 
+       /* Given a platId, we'll query for and select the matching ObjectID.
+        Then we'll send the point location and the platId to the mapAttachments function. */
        function selectPlat(platId) {
 	 if(platId) {
 	   var query = new Query();
 	   query.where = "ObjectID = " + platId;
 	   var deferred = platPointFLayer.selectFeatures(query, FeatureLayer.SELECTION_NEW, function(selection) {
-	     var center = graphicsUtils.getGeometries(selection)[0];  
-	     var extHandler = map.on("extent-change", function() {
-	       extHandler.remove();
-	     });
-	     getAttachments(platId);
+	     var center = graphicsUtils.getGeometries(selection)[0];
+	     /* Possible bug in MapServiceLayer requires rasterMap to be loaded before adding layer.  https://geonet.esri.com/message/306279?sr=search&searchId=5dcd85c7-9567-41e9-a141-55a546992dcf&searchIndex=14#306279 */
+	     if(rasterMap.loaded) {
+	       mapAttachments(platId, center);
+	     } else {
+	       rasterMap.on("load", mapAttachments(platId, center));
+	     }
 	     //Refresh the URL with the currently selected plat point
 	     if (typeof history.pushState !== "undefined") {
 	       window.history.pushState(null, null, "?uuid=" + platId);
@@ -264,25 +289,60 @@
 	 }
        }
 
-       function getAttachments(objectId) {
-	 domConstruct.empty("attachments");
+       /* This function will create a map image layer out of the attachments
+        and add them to the raster map for easily zooming in and out. */
+       // TODO Add pagination option for multiple attachments to show only one
+       // attachment at a time (addImage, removeImage methods).
+       // TODO Fix issues with map image disappearing or centering incorrectly.
+       function mapAttachments(objectId, centroid) {
+	 if(rasterMap.getLayer("mapImages") && mapImgLayer) {
+	   rasterMap.removeLayer(mapImgLayer);
+	 }
+	 mapImgLayer = new MapImageLayer({
+	   id: "mapImages"
+	 });
+	 mapImgLayer.on("error", function(err){
+	   console.error(JSON.stringify(err.toJson()));
+	 });
 	 var deferred = platPointFLayer.queryAttachmentInfos(objectId, function(attachInfos) {
 	   arrayUtils.forEach(attachInfos, function(attachInfo) {
-	     var attachment = new Attachment({
-	       imgUrl: attachInfo.url,
-	       fileName: attachInfo.name
-	     }).placeAt("attachments");
+	     var img = new Image();
+	     /* To georeference the image to match the raster map, we'll assume the
+	      map scale is 3ft per pixel (100ft/inch). We know the image DPI is 300.
+	      i.e. 300px/in divided by 100ft/in equals 3ft/pixel.
+	      We're also using the Image.onload function to ensure the image is
+	      fully loaded before adding it to the mapImageLayer. However, we're still
+	      having issues with corrupt images. */
+	     img.onload = function() {
+	       var xmin, xmax, ymin, ymax;
+	       xmin = centroid.x - (0.5*img.width*3);
+	       ymin = centroid.y - (0.5*img.height*3);
+	       xmax = centroid.x + (0.5*img.width*3);
+	       ymax = centroid.y + (0.5*img.width*3);
+	       var extent = new Extent(xmin,ymin,xmax,ymax, new SpatialReference({wkid:2285}));
+	       var mapImage = new MapImage({
+		 href: attachInfo.url,
+		 extent: extent
+	       });
+	       mapImgLayer.addImage(mapImage);
+	     }
+	     img.src = attachInfo.url;
 	   });
 	 });
+	 rasterMap.centerAndZoom(centroid, 3);
+	 rasterMap.addLayer(mapImgLayer);
        }
 
+       /* When a feature is selected, we activate the editing toolbar
+       so the feature can be moved. After the feature is moved, editing stops.*/
+       // TODO After moving a feature, the feature must be clicked again to enable
+       // editing. This might be confusing since the point is still highlighted.
        function initEditing() {
 	 var editingEnabled = false;
 	 var platPointFLayer = map.getLayer("platPointFLayer");
 	 platPointFLayer.on("selection-complete", function(evt) {
 	   var features = platPointFLayer.getSelectedFeatures();
 	   if (features.length > 0) {
-	     console.log("We've started editing");
 	     var graphic = features[0];
 	     editToolbar.activate(Edit.MOVE, graphic);
 	   }
@@ -291,7 +351,6 @@
 	   editToolbar.deactivate();
 	 });
 	 editToolbar.on("deactivate", function(evt) {
-	   console.log("We're done editing");
 	   if (evt.info.isModified) {
 	     platPointFLayer.applyEdits(null, [evt.graphic], null);
 	   }
